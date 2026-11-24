@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lumoqb Internet Radio Architecture</title>
+<style>
+:root{
+  --bg:#f6f7f9;--card:#fff;--ink:#1b2430;--mute:#5b6675;--line:#d5dae1;
+  --app:#e8f0ff;--app-s:#3b6fd8;
+  --net:#fff1dd;--net-s:#d98a1f;
+  --core0:#e6f6ec;--core0-s:#2f9a5b;
+  --core1:#f1e8ff;--core1-s:#7b4fd0;
+  --hw:#ffe9ea;--hw-s:#d24a55;
+  --store:#eef0f3;--store-s:#6b7686;
+  --code:#eef1f5;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1318;--card:#171c23;--ink:#e6eaf0;--mute:#9aa5b4;--line:#2b3340;
+  --app:#16284a;--app-s:#6b9bff;--net:#3a2a10;--net-s:#f0a840;
+  --core0:#12301f;--core0-s:#4fcf86;--core1:#2a1d47;--core1-s:#a98bff;
+  --hw:#3a1519;--hw-s:#ff7a85;--store:#222a35;--store-s:#9aa5b4;--code:#202733;
+}}
+:root[data-theme="dark"]{
+  --bg:#0f1318;--card:#171c23;--ink:#e6eaf0;--mute:#9aa5b4;--line:#2b3340;
+  --app:#16284a;--app-s:#6b9bff;--net:#3a2a10;--net-s:#f0a840;
+  --core0:#12301f;--core0-s:#4fcf86;--core1:#2a1d47;--core1-s:#a98bff;
+  --hw:#3a1519;--hw-s:#ff7a85;--store:#222a35;--store-s:#9aa5b4;--code:#202733;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1040px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:1.9rem;margin:0 0 4px}
+h2{font-size:1.25rem;margin:40px 0 6px}
+h3{font-size:1rem;margin:0 0 4px}
+p{margin:6px 0}
+.sub{color:var(--mute);margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:12px 0}
+code,.f{font-family:ui-monospace,Consolas,monospace;font-size:.86em;background:var(--code);padding:1px 5px;border-radius:4px}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.85rem;color:var(--mute);margin:8px 0}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px;border:2px solid}
+.l-app{background:var(--app);border-color:var(--app-s)!important}
+.l-net{background:var(--net);border-color:var(--net-s)!important}
+.l-c0{background:var(--core0);border-color:var(--core0-s)!important}
+.l-c1{background:var(--core1);border-color:var(--core1-s)!important}
+.l-hw{background:var(--hw);border-color:var(--hw-s)!important}
+.l-st{background:var(--store);border-color:var(--store-s)!important}
+svg{width:100%;height:auto;display:block}
+svg text{fill:var(--ink);font:12px system-ui,sans-serif}
+svg .t{font-weight:600;font-size:13px}
+svg .m{fill:var(--mute);font-size:11px}
+svg .arrow{stroke:var(--mute);stroke-width:1.6;fill:none}
+svg .arrow-h{fill:var(--mute)}
+svg .lane{fill:none;stroke:var(--line);stroke-dasharray:5 4}
+.b-app{fill:var(--app);stroke:var(--app-s)}.b-net{fill:var(--net);stroke:var(--net-s)}
+.b-c0{fill:var(--core0);stroke:var(--core0-s)}.b-c1{fill:var(--core1);stroke:var(--core1-s)}
+.b-hw{fill:var(--hw);stroke:var(--hw-s)}.b-st{fill:var(--store);stroke:var(--store-s)}
+svg rect.b{stroke-width:1.6;rx:8}
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mute);font-weight:600;font-size:.82rem;text-transform:uppercase;letter-spacing:.04em}
+.tablewrap{overflow-x:auto}
+ol.steps{padding-left:22px;margin:6px 0}
+ol.steps li{margin:6px 0}
+.pill{display:inline-block;font-size:.75rem;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mute);margin-left:6px}
+footer{color:var(--mute);font-size:.85rem;margin-top:40px}
+</style>
+</head>
+<body>
+<main>
+<h1>Lumoqb internet radio: architecture</h1>
+<p class="sub">How a station gets from the phone app, through Wi-Fi and the MP3 decoder, to the speaker and the six cube faces. Built from the firmware in <code>02_FW</code> and the app in <code>03_App</code>.</p>
+
+<div class="card">
+<h3>The short version</h3>
+<p>Each of the cube's six sides is a radio slot. Turn a side up and hold it for 750 ms, and the firmware opens a plain <b>HTTP</b> connection to that slot's MP3 stream, buffers it, decodes it with the Helix library and plays it through I2S. A live 8-band spectrum, computed from the decoded audio, draws the equalizer on the face (or drives the ferrofluid visual). There is no HTTPS, no HLS, no AAC and no ICY metadata. The stream must be a direct MP3 stream, because the ESP32 has no PSRAM.</p>
+</div>
+
+<h2>1. System overview</h2>
+<div class="legend">
+<span><i class="l-app"></i>Phone app</span><span><i class="l-net"></i>Internet</span>
+<span><i class="l-st"></i>Storage / state</span><span><i class="l-c0"></i>Main loop (Arduino task)</span>
+<span><i class="l-c1"></i>MP3 player task</span><span><i class="l-hw"></i>Hardware</span>
+</div>
+<div class="card">
+<svg viewBox="0 0 1000 640" role="img" aria-label="End to end data flow">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="arrow-h"/></marker></defs>
+
+<!-- Lane titles -->
+<text class="m" x="14" y="18">CONFIGURE (once)</text>
+<text class="m" x="14" y="232">SELECT + CONNECT (per side change)</text>
+<text class="m" x="14" y="402">STREAM + PLAY (continuous)</text>
+
+<!-- Row 1: config -->
+<rect class="b b-net" x="14" y="28" width="190" height="66"/>
+<text class="t" x="28" y="52">radio-browser.info</text><text class="m" x="28" y="70">station search API</text><text class="m" x="28" y="85">de1 / nl1 / at1 mirrors</text>
+<rect class="b b-app" x="260" y="28" width="230" height="66"/>
+<text class="t" x="274" y="52">Phone app (JS)</text><text class="m" x="274" y="70">world-directory.js radioRecord()</text><text class="m" x="274" y="85">MP3, non-HLS, HTTP, ≤192 kbps</text>
+<rect class="b b-app" x="546" y="28" width="190" height="66"/>
+<text class="t" x="560" y="52">BLE (NimBLE)</text><text class="m" x="560" y="70">face_record / face_set JSON</text><text class="m" x="560" y="85">≤511 bytes, chunked</text>
+<rect class="b b-st" x="790" y="28" width="196" height="66"/>
+<text class="t" x="804" y="52">NVS flash</text><text class="m" x="804" y="70">"world_faces" / "face_config"</text><text class="m" x="804" y="85">survives reboot</text>
+<path class="arrow" marker-end="url(#ah)" d="M204 61H258"/>
+<path class="arrow" marker-end="url(#ah)" d="M490 61H544"/>
+<path class="arrow" marker-end="url(#ah)" d="M736 61H788"/>
+
+<rect class="b b-c0" x="546" y="130" width="440" height="66"/>
+<text class="t" x="560" y="154">RADIO_STATIONS[6]  (RAM)</text>
+<text class="m" x="560" y="172">built from RADIO_CATALOG[12] (face_settings.h) then overridden by</text>
+<text class="m" x="560" y="187">user-chosen world stations (world_faces.h)  →  { title, host, path, port }</text>
+<path class="arrow" marker-end="url(#ah)" d="M888 94V128"/>
+<text class="m" x="896" y="115">loadWorldFaces()</text>
+
+<!-- Row 2: select -->
+<rect class="b b-hw" x="14" y="244" width="200" height="66"/>
+<text class="t" x="28" y="268">LIS3DH accelerometer</text><text class="m" x="28" y="286">Tilt_Detection() → side 1..6</text><text class="m" x="28" y="301">polled every 250 ms</text>
+<rect class="b b-c0" x="262" y="244" width="230" height="66"/>
+<text class="t" x="276" y="268">Orientation debounce</text><text class="m" x="276" y="286">same side stable for 750 ms</text><text class="m" x="276" y="301">side n → station index n−1</text>
+<rect class="b b-c0" x="540" y="244" width="220" height="66"/>
+<text class="t" x="554" y="268">startRadioStation(i)</text><text class="m" x="554" y="286">stops old stream, joins Wi-Fi,</text><text class="m" x="554" y="301">opens TCP socket</text>
+<rect class="b b-net" x="808" y="244" width="178" height="66"/>
+<text class="t" x="822" y="268">Stream server</text><text class="m" x="822" y="286">e.g. ice5.somafm.com:80</text><text class="m" x="822" y="301">≤3 redirects followed</text>
+<path class="arrow" marker-end="url(#ah)" d="M214 277H260"/>
+<path class="arrow" marker-end="url(#ah)" d="M492 277H538"/>
+<path class="arrow" marker-end="url(#ah)" d="M760 262H806"/>
+<path class="arrow" marker-end="url(#ah)" d="M806 292H762"/>
+<text class="m" x="764" y="257" >GET</text><text class="m" x="764" y="308">200</text>
+<path class="arrow" marker-end="url(#ah)" d="M640 196V242"/>
+<text class="m" x="648" y="222">host / path / port</text>
+
+<!-- Row 3: stream -->
+<rect class="b b-net" x="14" y="414" width="150" height="66"/>
+<text class="t" x="28" y="438">MP3 over TCP</text><text class="m" x="28" y="456">64–192 kbps</text><text class="m" x="28" y="471">lwIP RX window</text>
+<rect class="b b-c1" x="206" y="414" width="190" height="66"/>
+<text class="t" x="220" y="438">RadioBufferedStream</text><text class="m" x="220" y="456">8 KB ring, 4 KB prefill</text><text class="m" x="220" y="471">filled on demand</text>
+<rect class="b b-c1" x="438" y="414" width="190" height="66"/>
+<text class="t" x="452" y="438">MP3 Player Task</text><text class="m" x="452" y="456">readBytes(frame) → _mp3.write()</text><text class="m" x="452" y="471">priority 2, RADIO_AUDIO_CORE = 1</text>
+<rect class="b b-c1" x="670" y="414" width="150" height="66"/>
+<text class="t" x="684" y="438">Helix MP3</text><text class="m" x="684" y="456">PCM 16-bit</text><text class="m" x="684" y="471">PCM buffer 2305 samples</text>
+<rect class="b b-c1" x="860" y="414" width="126" height="66"/>
+<text class="t" x="874" y="438">Callback</text><text class="m" x="874" y="456">mp3AudioData-</text><text class="m" x="874" y="471">Callback()</text>
+<path class="arrow" marker-end="url(#ah)" d="M164 447H204"/>
+<path class="arrow" marker-end="url(#ah)" d="M396 447H436"/>
+<path class="arrow" marker-end="url(#ah)" d="M628 447H668"/>
+<path class="arrow" marker-end="url(#ah)" d="M820 447H858"/>
+
+<rect class="b b-c1" x="700" y="530" width="140" height="62"/>
+<text class="t" x="714" y="553">Volume + mute</text><text class="m" x="714" y="571">applyAudioVolume()</text><text class="m" x="714" y="585">alert mode == 2</text>
+<rect class="b b-hw" x="520" y="530" width="140" height="62"/>
+<text class="t" x="534" y="553">I2S DMA → amp</text><text class="m" x="534" y="571">44.1 kHz stereo</text><text class="m" x="534" y="585">BCK26 WS15 DOUT25</text>
+<rect class="b b-c1" x="880" y="530" width="106" height="62"/>
+<text class="t" x="892" y="553">Goertzel</text><text class="m" x="892" y="571">8 bands</text><text class="m" x="892" y="585">per 50 ms</text>
+<path class="arrow" d="M923 480V505H770V528" marker-end="url(#ah)"/>
+<path class="arrow" marker-end="url(#ah)" d="M700 561H662"/>
+<path class="arrow" marker-end="url(#ah)" d="M880 561H842" stroke-dasharray="4 3"/>
+
+<rect class="b b-c0" x="14" y="530" width="230" height="62"/>
+<text class="t" x="28" y="553">Main loop: visualizer</text><text class="m" x="28" y="571">updateRadioVisualizer() every 40 ms</text><text class="m" x="28" y="585">reads atomics, never PCM</text>
+<rect class="b b-hw" x="290" y="530" width="190" height="62"/>
+<text class="t" x="304" y="553">6 × LCD faces</text><text class="m" x="304" y="571">equalizer bars, or</text><text class="m" x="304" y="585">ferrofluid blob</text>
+<path class="arrow" marker-end="url(#ah)" d="M244 561H288"/>
+<path class="arrow" d="M933 592V622H129V594" marker-end="url(#ah)" stroke-dasharray="4 3"/>
+<text class="m" x="380" y="616">atomic levels[8], RMS, timestamp (lock-free)</text>
+</svg>
+</div>
+
+<h2>2. Configuring a station</h2>
+<div class="grid">
+<div class="card"><h3>Built-in catalog</h3>
+<p><span class="f">RADIO_CATALOG[12]</span> in <span class="f">main.cpp</span> holds 12 direct 128 kbps MP3 endpoints (ten SomaFM channels, Radio Parsa, Radio Hamrah). The saved <span class="f">faceSettings.radio[side]</span> index picks one per side at boot (<span class="f">applyFaceCatalogs()</span>).</p></div>
+<div class="card"><h3>Custom world stations</h3>
+<p>In the app, users search radio-browser.info and pick a station. <span class="f">radioRecord()</span> rejects anything that is not MP3, is HLS, is HTTPS, is over 192 kbps, is a <code>.m3u/.pls</code> playlist, or has an address that is too long. The firmware validates the record again (<span class="f">worldRecord()</span>: ASCII only, host charset, port 1–65535, path starts with <code>/</code>) before it saves it to NVS.</p></div>
+<div class="card"><h3>BLE hand-off</h3>
+<p>The BLE callback only copies a bounded command into a mutex-guarded slot. The main loop owns NVS writes, audio shutdown and redraws, so BLE can never touch the audio path directly. If a stream is playing when a side's station changes, the main loop stops it first.</p></div>
+</div>
+
+<h2>3. Connecting: <span class="f">startRadioStation()</span></h2>
+<div class="card">
+<ol class="steps">
+<li><b>Free the speaker.</b> Stop any continuous Lumo microphone capture (<span class="f">stopContinuousLumoCaptureForPlayback</span>). The dashboard also closes SD voice and the focus alarm so I2S is free.</li>
+<li><b>Tear down the old stream</b> (<span class="f">stopRadioStream()</span>): disable the visualizer, set <span class="f">audio_stop_requested</span>, wait up to 1 s for the task to exit (force-delete it if it does not), close the socket, free the decoder and ring buffer, zero the DMA buffers.</li>
+<li><b>Join Wi-Fi.</b> <span class="f">WiFi.mode(STA)</span>, then <span class="f">autoConnectSavedWifi()</span> if not already connected. If it fails, the face shows <code>WIFI FAILED</code>. Modem sleep stays on, because the Wi-Fi/BLE coexistence build aborts without it.</li>
+<li><b>Open TCP and send a minimal request.</b> <code>GET path HTTP/1.0</code>, <code>Accept: audio/mpeg</code>, <code>Icy-MetaData: 0</code>, <code>Connection: close</code>. HTTP/1.0 is used on purpose so the server will not use chunked encoding.</li>
+<li><b>Parse headers by hand</b> (<span class="f">readRadioHeaderLine()</span>, 8 s budget, 1 KB line cap, 64 headers max). The firmware accepts <code>200</code>. It follows <code>301/302/307/308</code> up to 3 times, using <code>Location:</code> as either an absolute <code>http://</code> URL or a path.</li>
+<li><b>Refuse unsupported framing.</b> A <code>chunked</code> response, or an <code>icy-metaint &gt; 0</code> header, aborts the connection. Either would put non-audio bytes in the MP3 stream.</li>
+<li><b>Start playback.</b> Allocate the 8 KB ring (<span class="f">RadioBufferedStream::begin</span>), allocate the Helix decoder (<span class="f">beginChecked()</span>, which uses <span class="f">nothrow</span> allocation), start the MP3 task, enable the visualizer and set the face to <code>PLAYING</code>.</li>
+</ol>
+<p>Every failure path sets <span class="f">radioLastStartAttemptMs</span> and shows <code>RETRYING</code> or an error. The main loop retries (section 6).</p>
+</div>
+
+<h2>4. Two tasks, one lock-free hand-off</h2>
+<div class="card">
+<svg viewBox="0 0 1000 330" role="img" aria-label="Threading model">
+<rect class="lane" x="8" y="8" width="480" height="314" rx="10"/>
+<rect class="lane" x="512" y="8" width="480" height="314" rx="10"/>
+<text class="t" x="24" y="32">Arduino loop task</text>
+<text class="t" x="528" y="32">MP3 Player Task (pinned to core 1, priority 2, 2000-word stack)</text>
+
+<rect class="b b-c0" x="24" y="50" width="448" height="50"/>
+<text class="t" x="38" y="72">updateRadioMode() / dashboard loop</text><text class="m" x="38" y="90">orientation poll, start/stop, reconnect, UI status text</text>
+<rect class="b b-c0" x="24" y="120" width="448" height="50"/>
+<text class="t" x="38" y="142">updateRadioVisualizer()  (40 ms)</text><text class="m" x="38" y="160">reads radioVizLevels[8] + RMS; eases bars; draws only changed segments</text>
+<rect class="b b-c0" x="24" y="190" width="448" height="50"/>
+<text class="t" x="38" y="212">ferroAudioUpdate / ferroAudioFrame (optional)</text><text class="m" x="38" y="230">turns RMS into an envelope that drives ferrofluid zoom and color</text>
+<rect class="b b-hw" x="24" y="260" width="448" height="50"/>
+<text class="t" x="38" y="282">LCD, IO expander, SPI</text><text class="m" x="38" y="300">only this task draws; decoder never touches the displays</text>
+
+<rect class="b b-c1" x="528" y="50" width="448" height="50"/>
+<text class="t" x="542" y="72">readBytes(_frame, MP3_MAX_FRAME_SIZE)</text><text class="m" x="542" y="90">drains the TCP socket into the ring, returns what is ready</text>
+<rect class="b b-c1" x="528" y="120" width="448" height="50"/>
+<text class="t" x="542" y="142">_mp3.write()  → Helix decode</text><text class="m" x="542" y="160">calls mp3AudioDataCallback once per decoded frame</text>
+<rect class="b b-c1" x="528" y="190" width="448" height="50"/>
+<text class="t" x="542" y="212">volume → radioVizAnalyze() → i2s_write()</text><text class="m" x="542" y="230">i2s_write blocks on the DMA queue, which paces the whole pipeline</text>
+<rect class="b b-c1" x="528" y="260" width="448" height="50"/>
+<text class="t" x="542" y="282">vTaskDelay(1 ms) per loop</text><text class="m" x="542" y="300">lets IDLE0 and lwIP run, which avoids task watchdog resets</text>
+
+<path class="arrow" d="M528 145H476" marker-end="url(#ah)" stroke-dasharray="4 3"/>
+<text class="m" x="484" y="136" style="text-anchor:middle">atomics</text>
+</svg>
+<p>Shared state between the two tasks is only <span class="f">std::atomic</span> values (<span class="f">radioVizLevels</span>, <span class="f">radioVizRmsQ15</span>, <span class="f">radioVizUpdated</span>, <span class="f">radioVizEnabled</span>) and the volatile <span class="f">audio_stop_requested</span> flag. There are no mutexes or queues between them, and the visualizer never copies PCM data.</p>
+</div>
+
+<h2>5. Buffering and the audio path</h2>
+<div class="grid">
+<div class="card"><h3>RadioBufferedStream <span class="pill">src/radio_buffer.h</span></h3>
+<p>An 8,192-byte ring that sits between the socket and Helix. It is a <span class="f">Stream</span> subclass, so the decoder task reads it like any stream. It has no task of its own: the decoder task calls <span class="f">fill()</span> from inside <span class="f">available()</span> and <span class="f">readBytes()</span>.</p>
+<ul>
+<li><b>Prefill:</b> the first read waits for 4,096 bytes (up to 5 s).</li>
+<li><b>Underrun:</b> if the ring empties, it waits for just 1 byte, not another full prefill, to keep the gap short. It then logs the underrun count, heap and largest free block.</li>
+<li><b>Dead socket:</b> an empty read does a <span class="f">MSG_PEEK</span> on the socket to log whether the peer closed it.</li>
+<li><b>Stop:</b> every wait loop checks <span class="f">audio_stop_requested</span>.</li>
+</ul></div>
+<div class="card"><h3>Decode and output <span class="pill">src/esp32_audio_task.h</span></h3>
+<ul>
+<li><b>Decoder:</b> Helix MP3 via a <span class="f">PixyToyMP3DecoderHelix</span> subclass. Its PCM buffer is trimmed from 5,120 to 2,305 samples (one max stereo frame plus a guard sample), which frees heap for Wi-Fi and BLE.</li>
+<li><b>Sample rate:</b> the first frame sets the I2S clock with <span class="f">i2s_set_clk()</span> (rate and mono/stereo from the stream).</li>
+<li><b>Volume:</b> scales samples by the 0–100 % setting. Alert mode other than 2 forces volume to 0.</li>
+<li><b>I2S:</b> port 0, 16-bit, 8 DMA buffers × 160 frames. <span class="f">writeAudioFully()</span> aborts the stream if no sample is accepted for 500 ms.</li>
+</ul></div>
+</div>
+
+<h2>6. Failure handling and reconnect</h2>
+<div class="card">
+<div class="tablewrap"><table>
+<tr><th>Condition</th><th>What the firmware does</th></tr>
+<tr><td>Socket read times out (5 s) or server closes</td><td>The MP3 task exits and sets <span class="f">mp3TaskHandle = NULL</span>. <span class="f">updateRadioMode()</span> sees that, waits until <span class="f">RADIO_RETRY_INTERVAL_MS</span> (5 s) has passed since the last attempt, then calls <span class="f">startRadioStation()</span> again.</td></tr>
+<tr><td>Wi-Fi drops</td><td>The main loop sees <span class="f">WiFi.status() != WL_CONNECTED</span>, stops the stream, and reconnects through the same retry path.</td></tr>
+<tr><td>Network stall (no data, socket alive)</td><td>The buffer starves, logs an underrun, and resumes on the first new byte. The code intentionally does not use the I2S timestamp to detect stalls, because that caused false reconnects.</td></tr>
+<tr><td>I2S output stalls &gt; 500 ms, or decoder makes no progress</td><td>Sets <span class="f">audio_stop_requested</span>; the task exits and the reconnect path runs.</td></tr>
+<tr><td>Not enough heap for ring buffer or decoder</td><td>Logs the free and largest block, shows <code>AUDIO ERROR</code> or retries later. It does not reboot.</td></tr>
+<tr><td>Bad response (not 200, 4 redirects, chunked/ICY metadata, bad headers)</td><td>Closes the socket, shows <code>RETRYING</code>, retries after the interval.</td></tr>
+<tr><td>Stop requested but task is stuck</td><td><span class="f">stopRadioStream()</span> waits 1 s, then force-deletes the task with <span class="f">Stop_Audio_Tasks()</span>.</td></tr>
+</table></div>
+<p>While a stream is playing, background HTTPS refreshes (weather, stocks, clock sync) are skipped: <span class="f">mp3TaskHandle != nullptr || radioStreamClient.connected()</span> blocks them. The decoder and TLS both need a large contiguous heap block that the ESP32 does not have for both at once.</p>
+</div>
+
+<h2>7. Visualizer pipeline</h2>
+<div class="card">
+<svg viewBox="0 0 1000 150" role="img" aria-label="Visualizer pipeline">
+<rect class="b b-c1" x="10" y="30" width="180" height="70"/>
+<text class="t" x="24" y="54">Decoded PCM</text><text class="m" x="24" y="72">≥ 512 frames, max</text><text class="m" x="24" y="87">once per 50 ms</text>
+<rect class="b b-c1" x="230" y="30" width="230" height="70"/>
+<text class="t" x="244" y="54">Goertzel × 8 bands</text><text class="m" x="244" y="72">180 350 700 1.2k 2.2k 3.6k</text><text class="m" x="244" y="87">5.5k 8.5k Hz, triangular window</text>
+<rect class="b b-st" x="500" y="30" width="200" height="70"/>
+<text class="t" x="514" y="54">Atomics</text><text class="m" x="514" y="72">levels[8] (0–192), RMS Q15,</text><text class="m" x="514" y="87">updated timestamp</text>
+<rect class="b b-c0" x="740" y="12" width="250" height="52"/>
+<text class="t" x="754" y="33">Equalizer face</text><text class="m" x="754" y="51">8 bars × 12 segments, mirrored reflection</text>
+<rect class="b b-c0" x="740" y="76" width="250" height="52"/>
+<text class="t" x="754" y="97">Ferrofluid face</text><text class="m" x="754" y="115">RMS → dB → envelope → zoom and color</text>
+<path class="arrow" marker-end="url(#ah)" d="M190 65H228"/>
+<path class="arrow" marker-end="url(#ah)" d="M460 65H498"/>
+<path class="arrow" marker-end="url(#ah)" d="M700 55L738 38"/>
+<path class="arrow" marker-end="url(#ah)" d="M700 75L738 102"/>
+</svg>
+<p>Data counts as "fresh" only if the last analysis is under 500 ms old. When it goes stale (paused, rebuffering), the bars decay to zero rather than freezing. Ferrofluid style is selectable per source (0 equalizer, 1 black, 2 full color, 3 localized color bands) with the <span class="f">audio_visual_set</span> BLE message, and saved in the <span class="f">audio_visual</span> NVS namespace. <span class="f">ferroRadioBegin()</span> reuses <span class="f">updateRadioMode()</span> for station choice and reconnects, so the ferrofluid mode needs no separate streaming code.</p>
+</div>
+
+<h2>8. Limits to know about</h2>
+<div class="card"><ul>
+<li><b>HTTP only.</b> No TLS on the stream. HTTPS stations are filtered out in the app, and the firmware cannot follow an <code>https://</code> redirect.</li>
+<li><b>MP3 only in practice.</b> The AAC decoder is compiled in and has a task starter, but <span class="f">startRadioStation()</span> only ever starts the MP3 task, and the request sends <code>Accept: audio/mpeg</code>.</li>
+<li><b>No metadata.</b> Titles shown on the faces come from the catalog or the user's saved name, not from the stream.</li>
+<li><b>One stream at a time.</b> Changing side tears the old one down fully before the new one opens, which causes a brief gap.</li>
+<li><b>Memory-driven design.</b> No PSRAM; the 8 KB ring, 2,305-sample PCM buffer, trimmed BLE config and no-FFT visualizer all exist to keep a large heap block free.</li>
+</ul></div>
+
+<h2>9. Where to look in the code</h2>
+<div class="card"><div class="tablewrap"><table>
+<tr><th>Responsibility</th><th>File</th><th>Symbols</th></tr>
+<tr><td>Catalog, stream connect, redirects, retry, orientation</td><td>02_FW/src/main.cpp</td><td><span class="f">RADIO_CATALOG</span>, <span class="f">startRadioStation</span>, <span class="f">stopRadioStream</span>, <span class="f">updateRadioMode</span>, <span class="f">readRadioHeaderLine</span>, <span class="f">parseHttpRadioUrl</span></td></tr>
+<tr><td>Jitter buffer</td><td>02_FW/src/radio_buffer.h</td><td><span class="f">RadioBufferedStream</span></td></tr>
+<tr><td>Decoder task, I2S, volume</td><td>02_FW/src/esp32_audio_task.h</td><td><span class="f">mp3_player_task</span>, <span class="f">mp3AudioDataCallback</span>, <span class="f">i2s_init</span>, <span class="f">writeAudioFully</span></td></tr>
+<tr><td>Spectrum analysis</td><td>02_FW/src/radio_visualizer.h</td><td><span class="f">radioVizAnalyze</span></td></tr>
+<tr><td>Ferrofluid radio visual</td><td>02_FW/src/ferrofluid_radio.h</td><td><span class="f">ferroAudioFrame</span>, <span class="f">ferroRadioBegin</span></td></tr>
+<tr><td>Per-side face choice, BLE commands</td><td>02_FW/src/face_settings.h, world_faces.h</td><td><span class="f">applyFaceCatalogs</span>, <span class="f">worldRecord</span>, <span class="f">queueFaceCommand</span></td></tr>
+<tr><td>Timing constants</td><td>02_FW/include/knobes.h</td><td><span class="f">RADIO_RETRY_INTERVAL_MS</span> 5000, <span class="f">RADIO_ORIENTATION_POLL_MS</span> 250, <span class="f">RADIO_ORIENTATION_STABLE_MS</span> 750</td></tr>
+<tr><td>Station search and validation (app)</td><td>03_App/src/js/world-directory.js</td><td><span class="f">radioRecord</span>, <span class="f">searchDirectory</span></td></tr>
+</table></div></div>
+
+<footer>Generated from a read of the firmware source. Line numbers drift, so search for the symbol names above.</footer>
+</main>
+</body>
+</html>
